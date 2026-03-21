@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/*.pid
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+.terraform.lock.hcl
+
+# Spark / Glue local artifacts
+spark-warehouse/
+.metastore_db/
+*.crc
+
+# AWS / local config
+.aws/
+*.pem
+
+# Data files
+data/
+tmp/
+*.parquet
+*.jsonl
+*.csv
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
