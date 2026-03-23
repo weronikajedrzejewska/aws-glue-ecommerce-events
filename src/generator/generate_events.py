@@ -12,11 +12,12 @@ DEVICE_TYPES = ["mobile", "desktop", "tablet"]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output-file", default="data/raw/events.jsonl")
+    parser.add_argument("--output-dir", default="data/raw/events")
     parser.add_argument("--event-count", type=int, default=20)
     parser.add_argument("--duplicate-ratio", type=float, default=0.1)
     parser.add_argument("--late-ratio", type=float, default=0.1)
     parser.add_argument("--v2-ratio", type=float, default=0.5)
+    parser.add_argument("--files-per-hour", type=int, default=2)
     return parser.parse_args()
 
 
@@ -59,10 +60,34 @@ def generate_event(i: int, late_ratio: float, v2_ratio: float) -> dict:
     return event
 
 
+def write_partitioned_files(events: list[dict], output_dir: str, files_per_hour: int) -> None:
+    base_path = Path(output_dir)
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    grouped = {}
+    for event in events:
+        ingestion_dt = datetime.fromisoformat(event["ingestion_timestamp"])
+        date_part = ingestion_dt.strftime("%Y-%m-%d")
+        hour_part = ingestion_dt.strftime("%H")
+        key = (date_part, hour_part)
+        grouped.setdefault(key, []).append(event)
+
+    for (date_part, hour_part), rows in grouped.items():
+        partition_path = base_path / f"event_date={date_part}" / f"hour={hour_part}"
+        partition_path.mkdir(parents=True, exist_ok=True)
+
+        chunk_size = max(1, len(rows) // files_per_hour)
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i:i + chunk_size]
+            file_path = partition_path / f"events_{i // chunk_size:03d}.jsonl"
+            with file_path.open("w", encoding="utf-8") as f:
+                for row in chunk:
+                    f.write(json.dumps(row) + "\n")
+
+
 def main() -> None:
     args = parse_args()
-    output_path = Path(args.output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir = args.output_dir
 
     events = []
     for i in range(args.event_count):
@@ -74,11 +99,8 @@ def main() -> None:
             duplicate["ingestion_timestamp"] = datetime.now(timezone.utc).isoformat()
             events.append(duplicate)
 
-    with output_path.open("w", encoding="utf-8") as f:
-        for event in events:
-            f.write(json.dumps(event) + "\n")
-
-    print(f"Wrote {len(events)} rows to {output_path}")
+    write_partitioned_files(events, output_dir, args.files_per_hour)
+    print(f"Wrote {len(events)} rows to partitioned raw files in {output_dir}")
 
 
 if __name__ == "__main__":
