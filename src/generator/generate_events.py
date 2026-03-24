@@ -14,6 +14,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default="data/raw/events")
     parser.add_argument("--event-count", type=int, default=20)
+    parser.add_argument("--days", type=int, default=3)
     parser.add_argument("--duplicate-ratio", type=float, default=0.1)
     parser.add_argument("--late-ratio", type=float, default=0.1)
     parser.add_argument("--v2-ratio", type=float, default=0.5)
@@ -21,9 +22,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def generate_event(i: int, late_ratio: float, v2_ratio: float) -> dict:
+def generate_event(i: int, days: int, late_ratio: float, v2_ratio: float) -> dict:
     now = datetime.now(timezone.utc)
-    event_time = now - timedelta(minutes=random.randint(0, 500))
+    event_time = now - timedelta(
+        days=random.randint(0, max(days - 1, 0)),
+        minutes=random.randint(0, 1439),
+    )
     event_type = random.choice(EVENT_TYPES)
     price = round(random.uniform(10, 300), 2)
 
@@ -87,11 +91,10 @@ def write_partitioned_files(events: list[dict], output_dir: str, files_per_hour:
 
 def main() -> None:
     args = parse_args()
-    output_dir = args.output_dir
-
     events = []
+
     for i in range(args.event_count):
-        event = generate_event(i, args.late_ratio, args.v2_ratio)
+        event = generate_event(i, args.days, args.late_ratio, args.v2_ratio)
         events.append(event)
 
         if random.random() < args.duplicate_ratio:
@@ -99,8 +102,8 @@ def main() -> None:
             duplicate["ingestion_timestamp"] = datetime.now(timezone.utc).isoformat()
             events.append(duplicate)
 
-    write_partitioned_files(events, output_dir, args.files_per_hour)
-    print(f"Wrote {len(events)} rows to partitioned raw files in {output_dir}")
+    write_partitioned_files(events, args.output_dir, args.files_per_hour)
+    print(f"Wrote {len(events)} rows to partitioned raw files in {args.output_dir}")
 
 
 if __name__ == "__main__":
