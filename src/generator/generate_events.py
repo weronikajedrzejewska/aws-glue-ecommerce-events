@@ -33,6 +33,7 @@ def generate_event(days: int, late_ratio: float, v2_ratio: float) -> dict:
     event_type = random.choice(EVENT_TYPES)
     price = round(random.uniform(10, 300), 2)
 
+    # Late-arriving data is intentional: some events are ingested well after event time.
     if random.random() < late_ratio:
         if random.random() < 0.1:
             ingestion_time = event_time + timedelta(days=random.randint(3, 7), minutes=random.randint(5, 60))
@@ -63,11 +64,13 @@ def generate_event(days: int, late_ratio: float, v2_ratio: float) -> dict:
         },
     }
 
-    if random.random() < 0.05:
-        event["payload"]["price"] = None
-
+    # v2 introduces a new field to simulate schema evolution over time.
     if event_version == "v2":
         event["device_type"] = random.choice(DEVICE_TYPES)
+
+    # A small share of events intentionally carries bad data for downstream validation.
+    if random.random() < 0.05:
+        event["payload"]["price"] = None
 
     return event
 
@@ -78,6 +81,7 @@ def make_dirty_duplicate(event: dict) -> dict:
         "payload": dict(event["payload"]),
     }
 
+    # Duplicates keep the same event_id but may arrive later and contain conflicting values.
     duplicate["ingestion_timestamp"] = datetime.now(timezone.utc).isoformat()
 
     if duplicate["payload"]["price"] is not None:
@@ -105,14 +109,17 @@ def write_partitioned_files(events: list[dict], output_dir: str, files_per_hour:
         key = (date_part, hour_part)
         grouped.setdefault(key, []).append(event)
 
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+
     for (date_part, hour_part), rows in grouped.items():
         partition_path = base_path / f"event_date={date_part}" / f"hour={hour_part}"
         partition_path.mkdir(parents=True, exist_ok=True)
 
+        # Small files are intentional here: they simulate a common raw-zone problem on S3.
         chunk_size = max(1, math.ceil(len(rows) / files_per_hour))
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i:i + chunk_size]
-            file_path = partition_path / f"events_{i // chunk_size:03d}.jsonl"
+            file_path = partition_path / f"events_{run_id}_{i // chunk_size:03d}.jsonl"
             with file_path.open("w", encoding="utf-8") as f:
                 for row in chunk:
                     f.write(json.dumps(row) + "\n")

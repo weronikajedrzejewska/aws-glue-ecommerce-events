@@ -58,6 +58,7 @@ def deduplicate_events(events: list[dict]) -> list[dict]:
         event_id = event["event_id"]
         current = latest_by_event_id.get(event_id)
 
+        # Last-write-wins by ingestion time; event time is used as a tiebreaker.
         if (
             current is None
             or event["ingestion_timestamp"] > current["ingestion_timestamp"]
@@ -87,7 +88,7 @@ def write_partitioned_curated(events: list[dict]) -> set[str]:
         partition_dir.mkdir(parents=True, exist_ok=True)
 
         output_file = partition_dir / "events.jsonl"
-        # Overwrite partition to keep writes idempotent during reprocessing.
+        # We overwrite each event_date partition to keep writes idempotent during reprocessing.
         with output_file.open("w", encoding="utf-8") as f:
             for row in rows:
                 f.write(json.dumps(row) + "\n")
