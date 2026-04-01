@@ -30,6 +30,20 @@ The final analytics layer answers questions such as:
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    A["Synthetic Event Generator"] --> B["Raw Events<br/>duplicates, late data, schema evolution, bad data"]
+    B --> C["Curated Events<br/>flatten, validate, deduplicate"]
+    C --> D["Abandoned Carts Analytics<br/>session-product grain"]
+
+    B --> E["Raw Storage<br/>event_date=YYYY-MM-DD / hour=HH"]
+    C --> F["Curated Storage<br/>event_date=YYYY-MM-DD"]
+    D --> G["Analytics Storage<br/>event_date=YYYY-MM-DD"]
+
+    E -. "AWS equivalent" .-> H["Amazon S3"]
+    F -. "AWS equivalent" .-> I["AWS Glue + S3"]
+    G -. "AWS equivalent" .-> J["Athena + Glue Catalog"]
+
 ### Raw Layer
 
 Synthetic event data is generated into a raw zone partitioned by ingestion time.
