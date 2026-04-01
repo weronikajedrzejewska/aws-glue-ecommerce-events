@@ -7,15 +7,15 @@ from pathlib import Path
 from uuid import uuid4
 
 
-EVENT_TYPES = ["page_view", "add_to_cart", "purchase"]
 CATEGORIES = ["books", "electronics", "home", "beauty", "toys"]
 DEVICE_TYPES = ["mobile", "desktop", "tablet"]
+COUNTRIES = ["PL", "DE", "FR", None]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default="data/raw/events")
-    parser.add_argument("--event-count", type=int, default=20)
+    parser.add_argument("--session-count", type=int, default=20)
     parser.add_argument("--days", type=int, default=3)
     parser.add_argument("--duplicate-ratio", type=float, default=0.1)
     parser.add_argument("--late-ratio", type=float, default=0.1)
@@ -24,16 +24,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def generate_event(days: int, late_ratio: float, v2_ratio: float) -> dict:
-    now = datetime.now(timezone.utc)
-    event_time = now - timedelta(
-        days=random.randint(0, max(days - 1, 0)),
-        minutes=random.randint(0, 1439),
-    )
-    event_type = random.choice(EVENT_TYPES)
-    price = round(random.uniform(10, 300), 2)
-
-    # Late-arriving data is intentional: some events are ingested well after event time.
+def build_base_event(
+    event_type: str,
+    session_id: str,
+    user_id: str,
+    product_id: str,
+    category: str,
+    price: float | None,
+    event_time: datetime,
+    late_ratio: float,
+    v2_ratio: float,
+) -> dict:
+    # Some events are intentionally ingested late to simulate late-arriving data.
     if random.random() < late_ratio:
         if random.random() < 0.1:
             ingestion_time = event_time + timedelta(days=random.randint(3, 7), minutes=random.randint(5, 60))
@@ -50,13 +52,13 @@ def generate_event(days: int, late_ratio: float, v2_ratio: float) -> dict:
         "event_timestamp": event_time.isoformat(),
         "ingestion_timestamp": ingestion_time.isoformat(),
         "event_version": event_version,
-        "user_id": f"user_{random.randint(1, 10)}",
-        "session_id": f"sess_{random.randint(1, 5)}",
-        "country": random.choice(["PL", "DE", "FR", None]),
+        "user_id": user_id,
+        "session_id": session_id,
+        "country": random.choice(COUNTRIES),
         "event_source": "web",
         "payload": {
-            "product_id": f"prod_{random.randint(100, 200)}",
-            "category": random.choice(CATEGORIES),
+            "product_id": product_id,
+            "category": category,
             "price": price,
             "currency": "USD",
             "quantity": 1,
@@ -64,15 +66,104 @@ def generate_event(days: int, late_ratio: float, v2_ratio: float) -> dict:
         },
     }
 
-    # v2 introduces a new field to simulate schema evolution over time.
+    # v2 adds device_type to simulate schema evolution.
     if event_version == "v2":
         event["device_type"] = random.choice(DEVICE_TYPES)
 
-    # A small share of events intentionally carries bad data for downstream validation.
+    # A small share of events intentionally contains bad data for validation tests.
     if random.random() < 0.05:
         event["payload"]["price"] = None
+        event["payload"]["cart_value"] = None
 
     return event
+
+
+def generate_session_events(days: int, late_ratio: float, v2_ratio: float) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    session_start = now - timedelta(
+        days=random.randint(0, max(days - 1, 0)),
+        minutes=random.randint(0, 1439),
+    )
+
+    user_id = f"user_{random.randint(1, 10)}"
+    session_id = f"sess_{uuid4().hex[:8]}"
+    product_id = f"prod_{random.randint(100, 200)}"
+    category = random.choice(CATEGORIES)
+    price = round(random.uniform(10, 300), 2)
+
+    # Session patterns create more realistic event sequences for analytics use cases.
+    session_pattern = random.choices(
+        ["view_only", "cart_only", "cart_purchase"],
+        weights=[0.2, 0.4, 0.4],
+    )[0]
+
+    events = [
+        build_base_event(
+            event_type="page_view",
+            session_id=session_id,
+            user_id=user_id,
+            product_id=product_id,
+            category=category,
+            price=price,
+            event_time=session_start,
+            late_ratio=late_ratio,
+            v2_ratio=v2_ratio,
+        )
+    ]
+
+    if session_pattern in {"cart_only", "cart_purchase"}:
+        add_to_cart_time = session_start + timedelta(minutes=random.randint(1, 20))
+        events.append(
+            build_base_event(
+                event_type="add_to_cart",
+                session_id=session_id,
+                user_id=user_id,
+                product_id=product_id,
+                category=category,
+                price=price,
+                event_time=add_to_cart_time,
+                late_ratio=late_ratio,
+                v2_ratio=v2_ratio,
+            )
+        )
+
+        # Some sessions add the same product multiple times to create edge cases.
+        if random.random() < 0.2:
+            second_add_time = add_to_cart_time + timedelta(minutes=random.randint(1, 10))
+            events.append(
+                build_base_event(
+                    event_type="add_to_cart",
+                    session_id=session_id,
+                    user_id=user_id,
+                    product_id=product_id,
+                    category=category,
+                    price=price,
+                    event_time=second_add_time,
+                    late_ratio=late_ratio,
+                    v2_ratio=v2_ratio,
+                )
+            )
+
+    if session_pattern == "cart_purchase":
+        purchase_base = [e for e in events if e["event_type"] == "add_to_cart"][0]
+        purchase_time = datetime.fromisoformat(purchase_base["event_timestamp"]) + timedelta(
+            minutes=random.randint(1, 60)
+        )
+        events.append(
+            build_base_event(
+                event_type="purchase",
+                session_id=session_id,
+                user_id=user_id,
+                product_id=product_id,
+                category=category,
+                price=price,
+                event_time=purchase_time,
+                late_ratio=late_ratio,
+                v2_ratio=v2_ratio,
+            )
+        )
+
+    return events
 
 
 def make_dirty_duplicate(event: dict) -> dict:
@@ -81,13 +172,14 @@ def make_dirty_duplicate(event: dict) -> dict:
         "payload": dict(event["payload"]),
     }
 
-    # Duplicates keep the same event_id but may arrive later and contain conflicting values.
+    # Duplicates keep the same event_id but may arrive later with slightly different values.
     duplicate["ingestion_timestamp"] = datetime.now(timezone.utc).isoformat()
 
     if duplicate["payload"]["price"] is not None:
         duplicate["payload"]["price"] = round(
             duplicate["payload"]["price"] + random.uniform(-5, 5), 2
         )
+        duplicate["payload"]["cart_value"] = duplicate["payload"]["price"]
 
     event_ts = datetime.fromisoformat(duplicate["event_timestamp"])
     duplicate["event_timestamp"] = (
@@ -109,13 +201,14 @@ def write_partitioned_files(events: list[dict], output_dir: str, files_per_hour:
         key = (date_part, hour_part)
         grouped.setdefault(key, []).append(event)
 
+    # Each run writes new file names so the raw zone behaves like append-only ingestion.
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 
     for (date_part, hour_part), rows in grouped.items():
         partition_path = base_path / f"event_date={date_part}" / f"hour={hour_part}"
         partition_path.mkdir(parents=True, exist_ok=True)
 
-        # Small files are intentional here: they simulate a common raw-zone problem on S3.
+        # Small files are intentional to simulate a common raw-zone problem on S3.
         chunk_size = max(1, math.ceil(len(rows) / files_per_hour))
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i:i + chunk_size]
@@ -130,12 +223,13 @@ def main() -> None:
     args = parse_args()
     events = []
 
-    for _ in range(args.event_count):
-        event = generate_event(args.days, args.late_ratio, args.v2_ratio)
-        events.append(event)
+    for _ in range(args.session_count):
+        session_events = generate_session_events(args.days, args.late_ratio, args.v2_ratio)
+        events.extend(session_events)
 
-        if random.random() < args.duplicate_ratio:
-            events.append(make_dirty_duplicate(event))
+        for event in session_events:
+            if random.random() < args.duplicate_ratio:
+                events.append(make_dirty_duplicate(event))
 
     write_partitioned_files(events, args.output_dir, args.files_per_hour)
     print(f"Wrote {len(events)} rows to partitioned raw files in {args.output_dir}")

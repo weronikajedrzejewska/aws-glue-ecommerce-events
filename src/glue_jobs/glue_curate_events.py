@@ -6,7 +6,9 @@ CURATED_PATH = "data/curated_spark/events"
 
 
 def get_spark() -> SparkSession:
-    return SparkSession.builder.appName("glue_curate_events").getOrCreate()
+    spark = SparkSession.builder.appName("glue_curate_events").getOrCreate()
+    spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+    return spark
 
 
 def main() -> None:
@@ -62,11 +64,16 @@ def main() -> None:
         .withColumn("rn", F.row_number().over(w))
         .filter(F.col("rn") == 1)
         .drop("rn")
-        .orderBy("event_date", "user_id", "session_id", "product_id")
     )
 
-    # Write curated data partitioned by event_date.
-    # This mirrors the analytics-friendly layout we would use on S3/Athena.
+    # Counts are used here for observability/debugging.
+    # In production, metrics would typically be emitted without repeated full scans.
+    raw_count = raw_df.count()
+    valid_count = valid_df.count()
+    curated_count = curated_df.count()
+    partitions_written = curated_df.select("event_date").distinct().count()
+
+    # Dynamic partition overwrite lets us rewrite only affected event_date partitions.
     (
         curated_df.write
         .mode("overwrite")
@@ -74,9 +81,10 @@ def main() -> None:
         .json(CURATED_PATH)
     )
 
-    print(f"Raw rows: {raw_df.count()}")
-    print(f"Valid rows: {valid_df.count()}")
-    print(f"Curated rows: {curated_df.count()}")
+    print(f"Raw rows: {raw_count}")
+    print(f"Valid rows: {valid_count}")
+    print(f"Curated rows: {curated_count}")
+    print(f"Partitions written: {partitions_written}")
     print(f"Output path: {CURATED_PATH}")
 
     spark.stop()
