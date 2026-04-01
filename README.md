@@ -43,6 +43,7 @@ flowchart LR
     E -. "AWS equivalent" .-> H["Amazon S3"]
     F -. "AWS equivalent" .-> I["AWS Glue + S3"]
     G -. "AWS equivalent" .-> J["Athena + Glue Catalog"]
+```md
 
 ### Raw Layer
 
