@@ -1,8 +1,8 @@
 from pyspark.sql import SparkSession, Window, functions as F
 
 
-CURATED_PATH = "data/curated_spark/events"
-OUTPUT_PATH = "data/analytics_spark/abandoned_carts"
+CURATED_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/curated/events"
+OUTPUT_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/abandoned_carts"
 TS_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX"
 
 
@@ -15,7 +15,7 @@ def get_spark() -> SparkSession:
 def main() -> None:
     spark = get_spark()
 
-    # Read curated events written in Spark and partitioned by event_date.
+    # Read curated Spark output from S3.
     curated_df = spark.read.json(f"{CURATED_PATH}/event_date=*/*.json")
 
     carts_df = (

@@ -1,8 +1,8 @@
 from pyspark.sql import SparkSession, Window, functions as F
 
 
-RAW_PATH = "data/raw/events"
-CURATED_PATH = "data/curated_spark/events"
+RAW_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/raw/events"
+CURATED_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/curated/events"
 
 
 def get_spark() -> SparkSession:
@@ -14,7 +14,7 @@ def get_spark() -> SparkSession:
 def main() -> None:
     spark = get_spark()
 
-    # Read raw event files from ingestion-time partitions.
+    # Read raw event files from ingestion-time partitions stored in S3.
     raw_df = spark.read.json(f"{RAW_PATH}/event_date=*/hour=*/*.jsonl")
 
     # Flatten nested payload fields so downstream analytics can work on a tabular schema.
@@ -67,13 +67,12 @@ def main() -> None:
     )
 
     # Counts are used here for observability/debugging.
-    # In production, metrics would typically be emitted without repeated full scans.
     raw_count = raw_df.count()
     valid_count = valid_df.count()
     curated_count = curated_df.count()
     partitions_written = curated_df.select("event_date").distinct().count()
 
-    # Dynamic partition overwrite lets us rewrite only affected event_date partitions.
+    # Dynamic partition overwrite rewrites only affected event_date partitions.
     (
         curated_df.write
         .mode("overwrite")

@@ -26,9 +26,28 @@ The final analytics layer answers questions such as:
 - PySpark
 - JSONL
 - local file-based raw / curated / analytics layers
-- AWS-oriented design for S3 + Glue + Athena
+- Amazon S3
+- AWS Glue
+- AWS Glue Crawlers
+- AWS Glue Data Catalog
+- Amazon Athena
 
 ## Architecture
+
+```mermaid
+flowchart LR
+    A["Synthetic Event Generator"] --> B["Raw Events<br/>duplicates, late data, schema evolution, bad data"]
+    B --> C["Curated Events<br/>flatten, validate, deduplicate"]
+    C --> D["Abandoned Carts Analytics<br/>session-product grain"]
+
+    B --> E["Raw Storage<br/>event_date=YYYY-MM-DD / hour=HH"]
+    C --> F["Curated Storage<br/>event_date=YYYY-MM-DD"]
+    D --> G["Analytics Storage<br/>event_date=YYYY-MM-DD"]
+
+    E -. "AWS equivalent" .-> H["Amazon S3"]
+    F -. "AWS equivalent" .-> I["AWS Glue + S3"]
+    G -. "AWS equivalent" .-> J["Athena + Glue Catalog"]
+```
 
 ### Raw Layer
 
@@ -40,9 +59,6 @@ Example layout:
 data/raw/events/event_date=YYYY-MM-DD/hour=HH/
 ```
 
-```text
-data/raw/events/event_date=YYYY-MM-DD/hour=HH/
-Characteristics:
 - append-like raw ingestion
 - many small files
 - duplicates
@@ -263,14 +279,33 @@ Spark analytics output currently produces:
 
 This confirms that the pipeline supports both abandoned and converted session flows.
 
+## AWS Deployment (Verified)
+
+The pipeline was deployed and validated on AWS using:
+
+- Amazon S3 for raw, curated, and analytics storage
+- AWS Glue jobs for Spark-based transformations
+- AWS Glue Crawlers for cataloging partitioned datasets
+- AWS Glue Data Catalog for table metadata
+- Amazon Athena for querying curated and analytics outputs
+
+Validated flow:
+- raw JSONL files uploaded to S3
+- `raw-to-curated` Glue job executed successfully
+- curated partitions registered through Glue Crawler
+- `curated-to-abandoned-carts` Glue job executed successfully
+- analytics partitions registered through Glue Crawler
+- Athena queries returned expected results for both curated and abandoned cart datasets
+
 ## AWS Mapping
 
-This project is implemented locally, but the design maps directly to AWS services:
+This project was first implemented locally and then validated on AWS.
 
+AWS services used in the deployed version:
 - Raw zone -> Amazon S3
 - Curated and analytics transformations -> AWS Glue
+- Table discovery -> AWS Glue Crawlers + Glue Data Catalog
 - Query layer -> Amazon Athena
-- Partitioned datasets -> Glue Data Catalog + Athena tables
 
 Target S3 layout:
 
@@ -292,10 +327,10 @@ The local project currently reprocesses datasets from local files, but the inten
 ## Limitations / Next Steps
 
 - incremental checkpointing is not fully implemented yet
-- Spark jobs currently read all local partitions
-- AWS resources are not deployed yet
-- Athena / Glue Catalog definitions are not yet created
-- IAM / Terraform layer is planned but not implemented
+- Spark jobs currently read all local partitions before AWS deployment refinement
+- IAM permissions can be narrowed from broad access to bucket-level least privilege
+- Airflow orchestration is planned as the next step
+- Terraform infrastructure-as-code is planned but not implemented yet
 
 ## Why This Project Matters
 
