@@ -59,6 +59,7 @@ Example layout:
 data/raw/events/event_date=YYYY-MM-DD/hour=HH/
 ```
 
+Characteristics:
 - append-like raw ingestion
 - many small files
 - duplicates
