@@ -1,8 +1,8 @@
-from pyspark.sql import SparkSession, Window, functions as F
+from pyspark.sql import SparkSession, Window
+from pyspark.sql import functions as F
 
+from src.utils.aws_paths import get_glue_paths
 
-CURATED_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/curated/events"
-OUTPUT_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/abandoned_carts"
 TS_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX"
 
 
@@ -14,9 +14,10 @@ def get_spark() -> SparkSession:
 
 def main() -> None:
     spark = get_spark()
+    paths = get_glue_paths()
 
     # Read curated Spark output from S3.
-    curated_df = spark.read.json(f"{CURATED_PATH}/event_date=*/*.json")
+    curated_df = spark.read.json(f"{paths.curated_path}/event_date=*/*.json")
 
     carts_df = (
         curated_df
@@ -109,13 +110,13 @@ def main() -> None:
         result_df.write
         .mode("overwrite")
         .partitionBy("event_date")
-        .json(OUTPUT_PATH)
+        .json(paths.analytics_path)
     )
 
     print(f"Curated input rows: {curated_count}")
     print(f"Abandoned carts rows: {result_count}")
     print(f"Partitions written: {partitions_written}")
-    print(f"Output path: {OUTPUT_PATH}")
+    print(f"Output path: {paths.analytics_path}")
 
     spark.stop()
 

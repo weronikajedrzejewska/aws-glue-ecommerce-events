@@ -31,6 +31,7 @@ The final analytics layer answers questions such as:
 - AWS Glue Crawlers
 - AWS Glue Data Catalog
 - Amazon Athena
+- GitHub Actions
 
 ## Architecture
 
@@ -47,6 +48,20 @@ flowchart LR
     E -. "AWS equivalent" .-> H["Amazon S3"]
     F -. "AWS equivalent" .-> I["AWS Glue + S3"]
     G -. "AWS equivalent" .-> J["Athena + Glue Catalog"]
+```
+
+## Repository Structure
+
+```text
+src/generator/generate_events.py
+src/glue_jobs/curate_events.py
+src/glue_jobs/glue_curate_events.py
+src/glue_jobs/glue_build_abandoned_carts.py
+src/transform/build_abandoned_carts.py
+src/utils/aws_paths.py
+tests/unit/
+tests/integration/
+.github/workflows/ci.yml
 ```
 
 ### Raw Layer
@@ -231,6 +246,49 @@ Responsibilities:
 - partitioned output by `event_date`
 - abandoned cart metrics at session-product grain
 
+### 6. Orchestrate pipeline in Airflow (local demo)
+
+Files:
+
+```text
+airflow/dags/ecommerce_pipeline_dag.py
+airflow/docker-compose.yml
+airflow/README_local_airflow.md
+```
+
+Responsibilities:
+- trigger Glue jobs and crawlers in the required order
+- show scheduler and DAG-run behavior for portfolio screenshots
+- provide a one-time online-like orchestration demo without permanent hosting
+
+## What Makes It Production-Style
+
+- messy event simulation instead of clean tutorial data
+- deterministic deduplication with `last-write-wins`
+- event-date partition reprocessing for late data
+- separate local Python and Glue-style Spark implementations
+- configurable Glue S3 paths through environment variables instead of hardcoded buckets
+- unit tests and smoke test for the local pipeline
+- CI workflow for linting and test execution
+
+## Local Quality Checks
+
+The repository now includes a lightweight quality gate for portfolio and CI use:
+
+- `ruff` for Python linting
+- `pytest` unit tests for generator, curated processing, and abandoned cart logic
+- smoke test covering `raw -> curated -> analytics` locally without AWS services
+
+Run locally:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python3.11 -m pip install -r requirements-dev.txt
+make lint
+make test
+make smoke-test
+```
+
 ## Abandoned Carts Output
 
 Grain:
@@ -268,6 +326,14 @@ Build analytics:
 ```bash
 python src/transform/build_abandoned_carts.py
 python src/glue_jobs/glue_build_abandoned_carts.py
+```
+
+Run quality checks:
+
+```bash
+make lint
+make test
+make smoke-test
 ```
 
 ## Current Output Example
@@ -316,6 +382,27 @@ s3://<bucket>/curated/events/event_date=YYYY-MM-DD/
 s3://<bucket>/analytics/abandoned_carts/event_date=YYYY-MM-DD/
 ```
 
+Glue jobs read their locations from environment variables, so the repo can be reused across AWS accounts without editing source files.
+
+Supported configuration:
+
+```bash
+export S3_RAW_BUCKET=...
+export S3_CURATED_BUCKET=...
+export S3_ANALYTICS_BUCKET=...
+export RAW_PREFIX=raw/events
+export CURATED_PREFIX=curated/events
+export ANALYTICS_PREFIX=analytics/abandoned_carts
+```
+
+Optional explicit URI overrides:
+
+```bash
+export RAW_S3_URI=s3://...
+export CURATED_S3_URI=s3://...
+export ANALYTICS_S3_URI=s3://...
+```
+
 ## Incremental Processing Strategy
 
 The local project currently reprocesses datasets from local files, but the intended AWS strategy is:
@@ -330,8 +417,8 @@ The local project currently reprocesses datasets from local files, but the inten
 - incremental checkpointing is not fully implemented yet
 - Spark jobs currently read all local partitions before AWS deployment refinement
 - IAM permissions can be narrowed from broad access to bucket-level least privilege
-- Airflow orchestration is planned as the next step
-- Terraform infrastructure-as-code is planned but not implemented yet
+- production-grade Airflow hosting (for example MWAA) is not implemented
+- Terraform module scaffolding exists, but the deployment code is not implemented yet
 
 ## Why This Project Matters
 
@@ -347,3 +434,4 @@ It shows:
 - curated layer design
 - business-facing analytics output
 - a migration path from local PySpark to AWS Glue and Athena
+- testability, CI, and configuration hygiene expected in production-leaning projects

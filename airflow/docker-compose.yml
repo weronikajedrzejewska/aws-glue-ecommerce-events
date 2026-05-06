@@ -1,0 +1,25 @@
+services:
+  airflow:
+    image: apache/airflow:2.9.3-python3.11
+    container_name: airflow-standalone
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__EXECUTOR: "SequentialExecutor"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__CORE__DAG_DISCOVERY_SAFE_MODE: "False"
+      AIRFLOW__LOGGING__LOGGING_LEVEL: "INFO"
+      AIRFLOW_CONN_AWS_DEFAULT: "aws://"
+      AWS_REGION: "${AWS_REGION:-eu-central-1}"
+      GLUE_JOB_RAW_TO_CURATED: "${GLUE_JOB_RAW_TO_CURATED:-raw-to-curated}"
+      GLUE_JOB_CURATED_TO_ABANDONED: "${GLUE_JOB_CURATED_TO_ABANDONED:-curated-to-abandoned-carts}"
+      GLUE_CRAWLER_CURATED: "${GLUE_CRAWLER_CURATED:-curated-events-crawler}"
+      GLUE_CRAWLER_ANALYTICS: "${GLUE_CRAWLER_ANALYTICS:-abandoned-carts-crawler}"
+      _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-amazon==8.22.0"
+    volumes:
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ${HOME}/.aws:/opt/airflow/.aws:ro
+    command: standalone

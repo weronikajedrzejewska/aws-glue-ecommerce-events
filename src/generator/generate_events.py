@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-
 CATEGORIES = ["books", "electronics", "home", "beauty", "toys"]
 DEVICE_TYPES = ["mobile", "desktop", "tablet"]
 COUNTRIES = ["PL", "DE", "FR", None]
@@ -37,10 +36,11 @@ def build_base_event(
 ) -> dict:
     # Some events are intentionally ingested late to simulate late-arriving data.
     if random.random() < late_ratio:
-        if random.random() < 0.1:
-            ingestion_time = event_time + timedelta(days=random.randint(3, 7), minutes=random.randint(5, 60))
-        else:
-            ingestion_time = event_time + timedelta(days=random.randint(1, 2), minutes=random.randint(5, 60))
+        delay_kwargs = {
+            "days": random.randint(3, 7) if random.random() < 0.1 else random.randint(1, 2),
+            "minutes": random.randint(5, 60),
+        }
+        ingestion_time = event_time + timedelta(**delay_kwargs)
     else:
         ingestion_time = event_time + timedelta(minutes=random.randint(0, 30))
 

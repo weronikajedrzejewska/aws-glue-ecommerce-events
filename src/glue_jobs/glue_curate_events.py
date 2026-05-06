@@ -1,8 +1,7 @@
-from pyspark.sql import SparkSession, Window, functions as F
+from pyspark.sql import SparkSession, Window
+from pyspark.sql import functions as F
 
-
-RAW_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/raw/events"
-CURATED_PATH = "s3://aws-glue-ecommerce-931619667208-eu-central-1-an/curated/events"
+from src.utils.aws_paths import get_glue_paths
 
 
 def get_spark() -> SparkSession:
@@ -13,9 +12,10 @@ def get_spark() -> SparkSession:
 
 def main() -> None:
     spark = get_spark()
+    paths = get_glue_paths()
 
     # Read raw event files from ingestion-time partitions stored in S3.
-    raw_df = spark.read.json(f"{RAW_PATH}/event_date=*/hour=*/*.jsonl")
+    raw_df = spark.read.json(f"{paths.raw_path}/event_date=*/hour=*/*.jsonl")
 
     # Flatten nested payload fields so downstream analytics can work on a tabular schema.
     flat_df = raw_df.select(
@@ -77,14 +77,14 @@ def main() -> None:
         curated_df.write
         .mode("overwrite")
         .partitionBy("event_date")
-        .json(CURATED_PATH)
+        .json(paths.curated_path)
     )
 
     print(f"Raw rows: {raw_count}")
     print(f"Valid rows: {valid_count}")
     print(f"Curated rows: {curated_count}")
     print(f"Partitions written: {partitions_written}")
-    print(f"Output path: {CURATED_PATH}")
+    print(f"Output path: {paths.curated_path}")
 
     spark.stop()
 

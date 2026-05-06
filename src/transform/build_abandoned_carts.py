@@ -3,7 +3,6 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-
 CURATED_DIR = Path("data/curated/events")
 OUTPUT_FILE = Path("data/analytics/abandoned_carts.jsonl")
 
@@ -12,9 +11,9 @@ def parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts)
 
 
-def load_curated_events() -> list[dict]:
+def load_curated_events(curated_dir: Path = CURATED_DIR) -> list[dict]:
     events = []
-    for file_path in CURATED_DIR.rglob("*.jsonl"):
+    for file_path in curated_dir.rglob("*.jsonl"):
         with file_path.open("r", encoding="utf-8") as f:
             for line in f:
                 events.append(json.loads(line))
@@ -88,18 +87,34 @@ def build_abandoned_carts(events: list[dict]) -> list[dict]:
     return results
 
 
-def main() -> None:
-    events = load_curated_events()
-    abandoned_carts = build_abandoned_carts(events)
-
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_FILE.open("w", encoding="utf-8") as f:
-        for row in abandoned_carts:
+def write_abandoned_carts(rows: list[dict], output_file: Path = OUTPUT_FILE) -> None:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with output_file.open("w", encoding="utf-8") as f:
+        for row in rows:
             f.write(json.dumps(row) + "\n")
 
-    print(f"Loaded curated rows: {len(events)}")
-    print(f"Wrote abandoned carts rows: {len(abandoned_carts)}")
-    print(f"Output file: {OUTPUT_FILE}")
+
+def run_abandoned_carts_pipeline(
+    curated_dir: Path = CURATED_DIR,
+    output_file: Path = OUTPUT_FILE,
+) -> dict[str, object]:
+    events = load_curated_events(curated_dir)
+    abandoned_carts = build_abandoned_carts(events)
+    write_abandoned_carts(abandoned_carts, output_file)
+
+    return {
+        "curated_rows": len(events),
+        "abandoned_carts_rows": len(abandoned_carts),
+        "output_file": output_file,
+    }
+
+
+def main() -> None:
+    stats = run_abandoned_carts_pipeline()
+
+    print(f"Loaded curated rows: {stats['curated_rows']}")
+    print(f"Wrote abandoned carts rows: {stats['abandoned_carts_rows']}")
+    print(f"Output file: {stats['output_file']}")
 
 
 if __name__ == "__main__":

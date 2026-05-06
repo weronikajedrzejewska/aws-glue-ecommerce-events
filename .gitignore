@@ -4,6 +4,7 @@ __pycache__/
 *.so
 .venv/
 venv/
+**/.venv/
 .env
 .env.*
 !.env.example
@@ -49,4 +50,6 @@ tmp/
 # IDE / OS
 .vscode/
 .idea/
+**/.idea/
 .DS_Store
+**/.DS_Store

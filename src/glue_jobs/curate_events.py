@@ -2,14 +2,25 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-
 RAW_DIR = Path("data/raw/events")
 CURATED_DIR = Path("data/curated/events")
 
 
-def load_raw_events() -> list[dict]:
+def parse_event_date(event_timestamp: str | None) -> str | None:
+    if event_timestamp is None:
+        return None
+
+    try:
+        event_ts = datetime.fromisoformat(event_timestamp)
+    except ValueError:
+        return None
+
+    return event_ts.date().isoformat()
+
+
+def load_raw_events(raw_dir: Path = RAW_DIR) -> list[dict]:
     events = []
-    for file_path in RAW_DIR.rglob("*.jsonl"):
+    for file_path in raw_dir.rglob("*.jsonl"):
         with file_path.open("r", encoding="utf-8") as f:
             for line in f:
                 events.append(json.loads(line))
@@ -18,14 +29,13 @@ def load_raw_events() -> list[dict]:
 
 def flatten_event(event: dict) -> dict:
     payload = event.get("payload", {})
-    event_ts = datetime.fromisoformat(event["event_timestamp"])
 
     return {
         "event_id": event.get("event_id"),
         "event_type": event.get("event_type"),
         "event_timestamp": event.get("event_timestamp"),
         "ingestion_timestamp": event.get("ingestion_timestamp"),
-        "event_date": event_ts.date().isoformat(),
+        "event_date": parse_event_date(event.get("event_timestamp")),
         "event_version": event.get("event_version"),
         "user_id": event.get("user_id"),
         "session_id": event.get("session_id"),
@@ -45,6 +55,8 @@ def is_valid_event(event: dict) -> bool:
     if event["event_id"] is None:
         return False
     if event["event_timestamp"] is None:
+        return False
+    if event["event_date"] is None:
         return False
     if event["event_type"] in {"add_to_cart", "purchase"} and event["price"] is None:
         return False
@@ -72,7 +84,7 @@ def deduplicate_events(events: list[dict]) -> list[dict]:
     return list(latest_by_event_id.values())
 
 
-def write_partitioned_curated(events: list[dict]) -> set[str]:
+def write_partitioned_curated(events: list[dict], curated_dir: Path = CURATED_DIR) -> set[str]:
     grouped = {}
 
     for event in events:
@@ -84,7 +96,7 @@ def write_partitioned_curated(events: list[dict]) -> set[str]:
     for event_date, rows in grouped.items():
         rows.sort(key=lambda x: x["event_timestamp"])
 
-        partition_dir = CURATED_DIR / f"event_date={event_date}"
+        partition_dir = curated_dir / f"event_date={event_date}"
         partition_dir.mkdir(parents=True, exist_ok=True)
 
         output_file = partition_dir / "events.jsonl"
@@ -96,24 +108,42 @@ def write_partitioned_curated(events: list[dict]) -> set[str]:
     return affected_partitions
 
 
-def main() -> None:
-    raw_events = load_raw_events()
+def run_curated_pipeline(
+    raw_dir: Path = RAW_DIR,
+    curated_dir: Path = CURATED_DIR,
+) -> dict[str, object]:
+    raw_events = load_raw_events(raw_dir)
     flat_events = [flatten_event(event) for event in raw_events]
 
     valid_events = [event for event in flat_events if is_valid_event(event)]
     invalid_count = len(flat_events) - len(valid_events)
 
     curated_events = deduplicate_events(valid_events)
-    affected_partitions = write_partitioned_curated(curated_events)
+    affected_partitions = write_partitioned_curated(curated_events, curated_dir)
 
-    print(f"Loaded raw rows: {len(raw_events)}")
-    print(f"Flattened rows: {len(flat_events)}")
-    print(f"Rejected invalid rows: {invalid_count}")
-    print(f"Valid rows before dedup: {len(valid_events)}")
-    print(f"Curated rows after dedup: {len(curated_events)}")
-    print(f"Dedup removed: {len(valid_events) - len(curated_events)} rows")
-    print(f"Reprocessing partitions: {sorted(affected_partitions)}")
-    print(f"Wrote curated partitions to: {CURATED_DIR}")
+    return {
+        "raw_rows": len(raw_events),
+        "flattened_rows": len(flat_events),
+        "invalid_rows": invalid_count,
+        "valid_rows_before_dedup": len(valid_events),
+        "curated_rows": len(curated_events),
+        "dedup_removed_rows": len(valid_events) - len(curated_events),
+        "affected_partitions": sorted(affected_partitions),
+        "output_dir": curated_dir,
+    }
+
+
+def main() -> None:
+    stats = run_curated_pipeline()
+
+    print(f"Loaded raw rows: {stats['raw_rows']}")
+    print(f"Flattened rows: {stats['flattened_rows']}")
+    print(f"Rejected invalid rows: {stats['invalid_rows']}")
+    print(f"Valid rows before dedup: {stats['valid_rows_before_dedup']}")
+    print(f"Curated rows after dedup: {stats['curated_rows']}")
+    print(f"Dedup removed: {stats['dedup_removed_rows']} rows")
+    print(f"Reprocessing partitions: {stats['affected_partitions']}")
+    print(f"Wrote curated partitions to: {stats['output_dir']}")
 
 
 if __name__ == "__main__":
