@@ -1,6 +1,2 @@
 boto3
-pandas
-pyarrow
 pyspark
-faker
-python-dotenv
