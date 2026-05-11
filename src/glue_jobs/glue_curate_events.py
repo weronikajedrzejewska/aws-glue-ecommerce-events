@@ -66,7 +66,13 @@ def main() -> None:
         .drop("rn")
     )
 
-    # Counts are used here for observability/debugging.
+    invalid_missing_ids = flat_df.filter(
+        F.col("event_id").isNull() | F.col("event_timestamp").isNull()
+    ).count()
+    invalid_bad_price = flat_df.filter(
+        F.col("event_type").isin("add_to_cart", "purchase") & F.col("price").isNull()
+    ).count()
+
     raw_count = raw_df.count()
     valid_count = valid_df.count()
     curated_count = curated_df.count()
@@ -80,11 +86,25 @@ def main() -> None:
         .json(paths.curated_path)
     )
 
-    print(f"Raw rows: {raw_count}")
-    print(f"Valid rows: {valid_count}")
-    print(f"Curated rows: {curated_count}")
-    print(f"Partitions written: {partitions_written}")
-    print(f"Output path: {paths.curated_path}")
+    rejected_count = raw_count - valid_count
+    dedup_removed = valid_count - curated_count
+
+    print("=== glue_curate_events quality summary ===")
+    print(f"Raw rows read:            {raw_count}")
+    rejected_pct = 100 * rejected_count / max(raw_count, 1)
+    dedup_pct = 100 * dedup_removed / max(valid_count, 1)
+    print(f"Rejected (invalid):       {rejected_count} ({rejected_pct:.1f}%)")
+    print(f"  - missing event_id/ts:  {invalid_missing_ids}")
+    print(f"  - bad price (cart/buy): {invalid_bad_price}")
+    print(f"Duplicates removed:       {dedup_removed} ({dedup_pct:.1f}%)")
+    print(f"Curated rows written:     {curated_count}")
+    print(f"Partitions written:       {partitions_written}")
+    print(f"Output path:              {paths.curated_path}")
+
+    if rejected_pct > 10.0:
+        raise ValueError(
+            f"Rejection rate {rejected_pct:.1f}% exceeds 10% threshold — check upstream data quality."
+        )
 
     spark.stop()
 

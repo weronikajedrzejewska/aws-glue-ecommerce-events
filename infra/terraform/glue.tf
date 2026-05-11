@@ -9,10 +9,12 @@ resource "aws_glue_job" "raw_to_curated" {
   }
 
   default_arguments = {
-    "--S3_RAW_BUCKET"      = aws_s3_bucket.raw.bucket
-    "--S3_CURATED_BUCKET"  = aws_s3_bucket.curated.bucket
-    "--job-language"       = "python"
-    "--enable-metrics"     = "true"
+    "--S3_RAW_BUCKET"                = aws_s3_bucket.raw.bucket
+    "--S3_CURATED_BUCKET"            = aws_s3_bucket.curated.bucket
+    "--job-language"                 = "python"
+    "--enable-metrics"               = "true"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "--enable-job-insights"          = "true"
   }
 
   glue_version      = "4.0"
@@ -32,10 +34,12 @@ resource "aws_glue_job" "curated_to_abandoned_carts" {
   }
 
   default_arguments = {
-    "--S3_CURATED_BUCKET"   = aws_s3_bucket.curated.bucket
-    "--S3_ANALYTICS_BUCKET" = aws_s3_bucket.analytics.bucket
-    "--job-language"        = "python"
-    "--enable-metrics"      = "true"
+    "--S3_CURATED_BUCKET"                = aws_s3_bucket.curated.bucket
+    "--S3_ANALYTICS_BUCKET"              = aws_s3_bucket.analytics.bucket
+    "--job-language"                     = "python"
+    "--enable-metrics"                   = "true"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "--enable-job-insights"              = "true"
   }
 
   glue_version      = "4.0"
@@ -66,4 +70,18 @@ resource "aws_glue_crawler" "analytics" {
 
 resource "aws_glue_catalog_database" "ecommerce" {
   name = replace("${local.prefix}-db", "-", "_")
+}
+
+resource "aws_athena_workgroup" "ecommerce" {
+  name = "${local.prefix}-workgroup"
+
+  configuration {
+    result_configuration {
+      output_location = "s3://${aws_s3_bucket.athena_results.bucket}/query-results/"
+
+      encryption_configuration {
+        encryption_option = "SSE_S3"
+      }
+    }
+  }
 }

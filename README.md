@@ -270,6 +270,7 @@ Responsibilities:
 - configurable Glue S3 paths through environment variables instead of hardcoded buckets
 - unit tests and smoke test for the local pipeline
 - CI workflow for linting and test execution
+- structured quality summary logged per run: rejection breakdown by category, dedup rate, conversion split — making anomalies visible without querying data directly
 
 ## Local Quality Checks
 
@@ -346,6 +347,40 @@ Spark analytics output currently produces:
 
 This confirms that the pipeline supports both abandoned and converted session flows.
 
+## Pipeline Quality Summary
+
+Each Glue job logs a structured quality breakdown to CloudWatch at the end of every run.
+
+Example output from `glue_curate_events`:
+
+```
+=== glue_curate_events quality summary ===
+Raw rows read:            12450
+Rejected (invalid):       187 (1.5%)
+  - missing event_id/ts:  42
+  - bad price (cart/buy): 145
+Duplicates removed:       934 (7.6%)
+Curated rows written:     11329
+Partitions written:       5
+Output path:              s3://.../curated/events
+```
+
+Example output from `glue_build_abandoned_carts`:
+
+```
+=== glue_build_abandoned_carts quality summary ===
+Curated input rows:       11329
+  - add_to_cart events:   5201
+  - purchase events:      3847
+Output rows:              5201
+  - abandoned:            2108 (40.5%)
+  - converted:            3093 (59.5%)
+Partitions written:       5
+Output path:              s3://.../analytics/abandoned_carts
+```
+
+This breakdown makes it straightforward to detect unexpected rejection spikes, deduplication anomalies, or conversion rate drift between pipeline runs — without querying the data directly.
+
 ## AWS Deployment (Verified)
 
 The pipeline was deployed and validated on AWS using:
@@ -363,6 +398,36 @@ Validated flow:
 - `curated-to-abandoned-carts` Glue job executed successfully
 - analytics partitions registered through Glue Crawler
 - Athena queries returned expected results for both curated and abandoned cart datasets
+
+### AWS Screenshots
+
+Glue jobs registered in the console:
+
+![Glue jobs](docs/images/glue_jobs.png)
+
+Glue job run confirmation:
+
+![Glue job run](docs/images/glue_job_run.png)
+
+Glue Data Catalog after crawler run:
+
+![Glue catalog](docs/images/glue_catalog.png)
+
+Athena — conversion rate by day:
+
+![Athena conversion rate](docs/images/athena_conversion_rate.png)
+
+Athena — lost cart value by day:
+
+![Athena lost cart value](docs/images/athena_lost_cart_value.png)
+
+Athena — average time to purchase:
+
+![Athena avg time to purchase](docs/images/athena_avg_time_to_purchase.png)
+
+Airflow DAG graph view (local Docker demo):
+
+![Airflow DAG graph](docs/images/airflow_graph.png)
 
 ## AWS Mapping
 
@@ -412,13 +477,15 @@ The local project currently reprocesses datasets from local files, but the inten
 - affected `event_date` partitions are identified from incoming records
 - only impacted curated and analytics partitions are rewritten
 
-## Limitations / Next Steps
+## Design Decisions and Trade-offs
 
-- incremental checkpointing is not fully implemented yet
-- Spark jobs currently read all local partitions before AWS deployment refinement
-- IAM permissions can be narrowed from broad access to bucket-level least privilege
-- production-grade Airflow hosting (for example MWAA) is not implemented
-- Terraform module scaffolding exists, but the deployment code is not implemented yet
+**Incremental processing:** The Glue jobs use dynamic partition overwrite, which rewrites only affected `event_date` partitions. Full incremental checkpointing (tracking exactly which raw files have been processed) is not implemented. In production this would be handled by a state store (e.g. DynamoDB) or Glue job bookmarks, but adds operational complexity not warranted for this pipeline's data volume.
+
+**Airflow hosting:** The DAG runs locally via Docker Compose for demo purposes. In production, MWAA or a self-managed Airflow cluster would be used to hold live AWS credentials and run on a schedule. The DAG code is written against the same `GlueJobOperator` and `GlueCrawlerOperator` that MWAA would use, so the migration path is configuration-only.
+
+**Terraform scope:** The Terraform configuration provisions all AWS resources used in this project (S3 buckets, Glue jobs, crawlers, Glue Catalog database, IAM role, Athena workgroup). It does not manage uploading the Glue scripts to S3, which is handled separately as a deployment step before running `terraform apply`.
+
+**IAM permissions:** The Glue IAM role uses `AWSGlueServiceRole` plus a scoped inline policy limited to the three project S3 buckets and the scripts bucket. Cross-account or VPC-level restrictions are out of scope for this project.
 
 ## Why This Project Matters
 

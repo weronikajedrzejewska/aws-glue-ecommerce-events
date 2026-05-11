@@ -33,6 +33,8 @@ data "aws_iam_policy_document" "glue_s3" {
       "${aws_s3_bucket.curated.arn}/*",
       aws_s3_bucket.analytics.arn,
       "${aws_s3_bucket.analytics.arn}/*",
+      aws_s3_bucket.scripts.arn,
+      "${aws_s3_bucket.scripts.arn}/*",
     ]
   }
 }

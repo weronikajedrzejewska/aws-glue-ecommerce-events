@@ -101,9 +101,12 @@ def main() -> None:
         )
     )
 
-    # Counts are used here for observability/debugging.
+    cart_events = curated_df.filter(F.col("event_type") == "add_to_cart").count()
+    purchase_events = curated_df.filter(F.col("event_type") == "purchase").count()
     curated_count = curated_df.count()
     result_count = result_df.count()
+    abandoned_count = result_df.filter(F.col("abandoned_cart_flag") == 1).count()
+    converted_count = result_df.filter(F.col("abandoned_cart_flag") == 0).count()
     partitions_written = result_df.select("event_date").distinct().count()
 
     (
@@ -113,10 +116,25 @@ def main() -> None:
         .json(paths.analytics_path)
     )
 
-    print(f"Curated input rows: {curated_count}")
-    print(f"Abandoned carts rows: {result_count}")
-    print(f"Partitions written: {partitions_written}")
-    print(f"Output path: {paths.analytics_path}")
+    print("=== glue_build_abandoned_carts quality summary ===")
+    print(f"Curated input rows:       {curated_count}")
+    print(f"  - add_to_cart events:   {cart_events}")
+    print(f"  - purchase events:      {purchase_events}")
+    print(f"Output rows:              {result_count}")
+    abandoned_pct = 100 * abandoned_count / max(result_count, 1)
+    converted_pct = 100 * converted_count / max(result_count, 1)
+    print(f"  - abandoned:            {abandoned_count} ({abandoned_pct:.1f}%)")
+    print(f"  - converted:            {converted_count} ({converted_pct:.1f}%)")
+    print(f"Partitions written:       {partitions_written}")
+    print(f"Output path:              {paths.analytics_path}")
+
+    if result_count == 0:
+        raise ValueError("Analytics output is empty — no abandoned cart records produced.")
+
+    if converted_pct > 95.0:
+        raise ValueError(
+            f"Conversion rate {converted_pct:.1f}% is suspiciously high — purchase events may be double-counted."
+        )
 
     spark.stop()
 
