@@ -211,7 +211,7 @@ def write_partitioned_files(events: list[dict], output_dir: str, files_per_hour:
         # Small files are intentional to simulate a common raw-zone problem on S3.
         chunk_size = max(1, math.ceil(len(rows) / files_per_hour))
         for i in range(0, len(rows), chunk_size):
-            chunk = rows[i:i + chunk_size]
+            chunk = rows[i : i + chunk_size]
             file_path = partition_path / f"events_{run_id}_{i // chunk_size:03d}.jsonl"
             with file_path.open("w", encoding="utf-8") as f:
                 for row in chunk:

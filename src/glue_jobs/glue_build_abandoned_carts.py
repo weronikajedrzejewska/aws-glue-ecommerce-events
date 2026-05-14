@@ -20,8 +20,7 @@ def main() -> None:
     curated_df = spark.read.json(f"{paths.curated_path}/event_date=*/*.json")
 
     carts_df = (
-        curated_df
-        .filter(F.col("event_type") == "add_to_cart")
+        curated_df.filter(F.col("event_type") == "add_to_cart")
         .select(
             "user_id",
             "session_id",
@@ -36,8 +35,7 @@ def main() -> None:
     )
 
     purchases_df = (
-        curated_df
-        .filter(F.col("event_type") == "purchase")
+        curated_df.filter(F.col("event_type") == "purchase")
         .select(
             "user_id",
             "session_id",
@@ -64,13 +62,12 @@ def main() -> None:
     )
 
     # Keep the earliest purchase that closes a given cart event.
-    w = Window.partitionBy(
-        "user_id", "session_id", "product_id", "added_to_cart_ts"
-    ).orderBy(F.col("purchased_ts_parsed").asc_nulls_last())
+    w = Window.partitionBy("user_id", "session_id", "product_id", "added_to_cart_ts").orderBy(
+        F.col("purchased_ts_parsed").asc_nulls_last()
+    )
 
     result_df = (
-        joined_df
-        .withColumn("rn", F.row_number().over(w))
+        joined_df.withColumn("rn", F.row_number().over(w))
         .filter(F.col("rn") == 1)
         .drop("rn")
         .withColumn("event_date", F.to_date("added_to_cart_ts_parsed"))
@@ -85,7 +82,8 @@ def main() -> None:
                 (
                     F.col("purchased_ts_parsed").cast("long")
                     - F.col("added_to_cart_ts_parsed").cast("long")
-                ) / 60.0,
+                )
+                / 60.0,
             ),
         )
         .select(
@@ -109,12 +107,7 @@ def main() -> None:
     converted_count = result_df.filter(F.col("abandoned_cart_flag") == 0).count()
     partitions_written = result_df.select("event_date").distinct().count()
 
-    (
-        result_df.write
-        .mode("overwrite")
-        .partitionBy("event_date")
-        .json(paths.analytics_path)
-    )
+    (result_df.write.mode("overwrite").partitionBy("event_date").json(paths.analytics_path))
 
     print("=== glue_build_abandoned_carts quality summary ===")
     print(f"Curated input rows:       {curated_count}")

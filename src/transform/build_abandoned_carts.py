@@ -51,7 +51,8 @@ def build_abandoned_carts(events: list[dict]) -> list[dict]:
 
         # Only purchases after add_to_cart should close the cart.
         purchase_events = [
-            r for r in purchase_events
+            r
+            for r in purchase_events
             if parse_ts(r["event_timestamp"]) >= parse_ts(added_to_cart_ts)
         ]
         purchase_events.sort(key=lambda x: parse_ts(x["event_timestamp"]))

@@ -35,10 +35,7 @@ def main() -> None:
         F.col("payload.currency").alias("currency"),
         F.col("payload.quantity").alias("quantity"),
         F.col("payload.cart_value").alias("cart_value"),
-    ).withColumn(
-        "event_date",
-        F.to_date("event_timestamp")
-    )
+    ).withColumn("event_date", F.to_date("event_timestamp"))
 
     # Minimal data quality rules:
     # - event_id and event_timestamp must exist
@@ -46,10 +43,7 @@ def main() -> None:
     valid_df = flat_df.filter(
         F.col("event_id").isNotNull()
         & F.col("event_timestamp").isNotNull()
-        & ~(
-            F.col("event_type").isin("add_to_cart", "purchase")
-            & F.col("price").isNull()
-        )
+        & ~(F.col("event_type").isin("add_to_cart", "purchase") & F.col("price").isNull())
     )
 
     # Deduplicate by event_id using last-write-wins on ingestion time.
@@ -60,10 +54,7 @@ def main() -> None:
     )
 
     curated_df = (
-        valid_df
-        .withColumn("rn", F.row_number().over(w))
-        .filter(F.col("rn") == 1)
-        .drop("rn")
+        valid_df.withColumn("rn", F.row_number().over(w)).filter(F.col("rn") == 1).drop("rn")
     )
 
     invalid_missing_ids = flat_df.filter(
@@ -79,12 +70,7 @@ def main() -> None:
     partitions_written = curated_df.select("event_date").distinct().count()
 
     # Dynamic partition overwrite rewrites only affected event_date partitions.
-    (
-        curated_df.write
-        .mode("overwrite")
-        .partitionBy("event_date")
-        .json(paths.curated_path)
-    )
+    (curated_df.write.mode("overwrite").partitionBy("event_date").json(paths.curated_path))
 
     rejected_count = raw_count - valid_count
     dedup_removed = valid_count - curated_count
