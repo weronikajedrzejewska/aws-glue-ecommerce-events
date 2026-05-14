@@ -133,7 +133,8 @@ def main() -> None:
 
     if converted_pct > 95.0:
         raise ValueError(
-            f"Conversion rate {converted_pct:.1f}% is suspiciously high — purchase events may be double-counted."
+            f"Conversion rate {converted_pct:.1f}% is suspiciously high "
+            "— purchase events may be double-counted."
         )
 
     spark.stop()

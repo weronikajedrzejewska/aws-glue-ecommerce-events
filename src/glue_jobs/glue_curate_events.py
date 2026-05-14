@@ -103,7 +103,8 @@ def main() -> None:
 
     if rejected_pct > 10.0:
         raise ValueError(
-            f"Rejection rate {rejected_pct:.1f}% exceeds 10% threshold — check upstream data quality."
+            f"Rejection rate {rejected_pct:.1f}% exceeds 10% threshold "
+            "— check upstream data quality."
         )
 
     spark.stop()
