@@ -1,6 +1,9 @@
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 RAW_DIR = Path("data/raw/events")
 CURATED_DIR = Path("data/curated/events")
@@ -23,7 +26,10 @@ def load_raw_events(raw_dir: Path = RAW_DIR) -> list[dict]:
     for file_path in raw_dir.rglob("*.jsonl"):
         with file_path.open("r", encoding="utf-8") as f:
             for line in f:
-                events.append(json.loads(line))
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed JSON line in %s", file_path)
     return events
 
 
@@ -134,16 +140,16 @@ def run_curated_pipeline(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stats = run_curated_pipeline()
 
-    print(f"Loaded raw rows: {stats['raw_rows']}")
-    print(f"Flattened rows: {stats['flattened_rows']}")
-    print(f"Rejected invalid rows: {stats['invalid_rows']}")
-    print(f"Valid rows before dedup: {stats['valid_rows_before_dedup']}")
-    print(f"Curated rows after dedup: {stats['curated_rows']}")
-    print(f"Dedup removed: {stats['dedup_removed_rows']} rows")
-    print(f"Reprocessing partitions: {stats['affected_partitions']}")
-    print(f"Wrote curated partitions to: {stats['output_dir']}")
+    logger.info("Loaded raw rows: %d", stats["raw_rows"])
+    logger.info("Rejected invalid rows: %d", stats["invalid_rows"])
+    logger.info("Valid rows before dedup: %d", stats["valid_rows_before_dedup"])
+    logger.info("Curated rows after dedup: %d", stats["curated_rows"])
+    logger.info("Dedup removed: %d rows", stats["dedup_removed_rows"])
+    logger.info("Affected partitions: %s", stats["affected_partitions"])
+    logger.info("Wrote curated partitions to: %s", stats["output_dir"])
 
 
 if __name__ == "__main__":

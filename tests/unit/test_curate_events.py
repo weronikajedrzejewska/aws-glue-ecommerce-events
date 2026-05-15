@@ -1,4 +1,14 @@
-from src.glue_jobs.curate_events import deduplicate_events, flatten_event, is_valid_event
+import json
+from pathlib import Path
+
+import pytest
+
+from src.glue_jobs.curate_events import (
+    deduplicate_events,
+    flatten_event,
+    is_valid_event,
+    load_raw_events,
+)
 
 
 def test_flatten_event_extracts_payload_and_event_date() -> None:
@@ -58,3 +68,39 @@ def test_deduplicate_events_keeps_latest_ingestion_then_latest_event_time() -> N
     deduplicated = deduplicate_events([older, newer])
 
     assert deduplicated == [newer]
+
+
+def test_load_raw_events_skips_malformed_json(tmp_path: Path) -> None:
+    jsonl = tmp_path / "events.jsonl"
+    good = {"event_id": "evt-1", "event_type": "page_view"}
+    jsonl.write_text(json.dumps(good) + "\n" + "NOT_JSON\n", encoding="utf-8")
+
+    events = load_raw_events(tmp_path)
+
+    assert len(events) == 1
+    assert events[0]["event_id"] == "evt-1"
+
+
+def test_is_valid_event_rejects_missing_event_id() -> None:
+    event = {
+        "event_id": None,
+        "event_type": "page_view",
+        "event_timestamp": "2026-04-20T10:00:00+00:00",
+        "event_date": "2026-04-20",
+        "price": None,
+    }
+
+    assert not is_valid_event(event)
+
+
+@pytest.mark.parametrize("event_type", ["add_to_cart", "purchase"])
+def test_is_valid_event_rejects_cart_and_purchase_without_price(event_type: str) -> None:
+    event = {
+        "event_id": "evt-x",
+        "event_type": event_type,
+        "event_timestamp": "2026-04-20T10:00:00+00:00",
+        "event_date": "2026-04-20",
+        "price": None,
+    }
+
+    assert not is_valid_event(event)

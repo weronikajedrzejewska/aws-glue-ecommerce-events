@@ -1,7 +1,10 @@
 import json
+import logging
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CURATED_DIR = Path("data/curated/events")
 OUTPUT_FILE = Path("data/analytics/abandoned_carts.jsonl")
@@ -16,7 +19,10 @@ def load_curated_events(curated_dir: Path = CURATED_DIR) -> list[dict]:
     for file_path in curated_dir.rglob("*.jsonl"):
         with file_path.open("r", encoding="utf-8") as f:
             for line in f:
-                events.append(json.loads(line))
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed JSON line in %s", file_path)
     return events
 
 
@@ -111,11 +117,12 @@ def run_abandoned_carts_pipeline(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stats = run_abandoned_carts_pipeline()
 
-    print(f"Loaded curated rows: {stats['curated_rows']}")
-    print(f"Wrote abandoned carts rows: {stats['abandoned_carts_rows']}")
-    print(f"Output file: {stats['output_file']}")
+    logger.info("Loaded curated rows: %d", stats["curated_rows"])
+    logger.info("Wrote abandoned carts rows: %d", stats["abandoned_carts_rows"])
+    logger.info("Output file: %s", stats["output_file"])
 
 
 if __name__ == "__main__":
