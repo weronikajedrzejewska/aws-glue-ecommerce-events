@@ -1,4 +1,4 @@
-# AWS Event-Driven E-commerce Pipeline (AWS Glue)
+# E-commerce Event Pipeline on AWS
 
 ![CI](https://img.shields.io/badge/CI-pytest%20%2B%20ruff-2ea44f) ![Python](https://img.shields.io/badge/python-3.11-blue) ![AWS](https://img.shields.io/badge/AWS-Glue%20%2B%20Athena-FF9900) ![Terraform](https://img.shields.io/badge/infra-Terraform-7B42BC)
 
