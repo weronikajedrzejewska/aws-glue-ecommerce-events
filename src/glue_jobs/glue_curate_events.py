@@ -63,9 +63,13 @@ def main() -> None:
         F.col("event_id").isNull()
         | F.col("event_timestamp").isNull()
         | (F.col("event_type").isin("add_to_cart", "purchase") & F.col("price").isNull())
-    ).withColumn("rejection_reason", F.when(
-        F.col("event_id").isNull() | F.col("event_timestamp").isNull(), "missing_required_fields"
-    ).otherwise("invalid_price"))
+    ).withColumn(
+        "rejection_reason",
+        F.when(
+            F.col("event_id").isNull() | F.col("event_timestamp").isNull(),
+            "missing_required_fields",
+        ).otherwise("invalid_price"),
+    )
 
     invalid_missing_ids = flat_df.filter(
         F.col("event_id").isNull() | F.col("event_timestamp").isNull()
