@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CuratedEvent",
+  "description": "Curated event schema — flattened, validated, deduplicated. event_date derived from event_timestamp. device_type nullable to accommodate v1 events.",
+  "type": "object",
+  "required": ["event_id", "event_type", "event_timestamp", "ingestion_timestamp", "event_date", "event_version", "user_id", "session_id", "event_source"],
+  "properties": {
+    "event_id":            { "type": "string", "format": "uuid" },
+    "event_type":          { "type": "string", "enum": ["page_view", "add_to_cart", "purchase"] },
+    "event_timestamp":     { "type": "string", "format": "date-time" },
+    "ingestion_timestamp": { "type": "string", "format": "date-time" },
+    "event_date":          { "type": "string", "format": "date" },
+    "event_version":       { "type": "string", "enum": ["v1", "v2"] },
+    "user_id":             { "type": "string" },
+    "session_id":          { "type": "string" },
+    "country":             { "type": ["string", "null"] },
+    "event_source":        { "type": "string" },
+    "device_type":         { "type": ["string", "null"], "enum": ["mobile", "desktop", "tablet", null] },
+    "product_id":          { "type": ["string", "null"] },
+    "category":            { "type": ["string", "null"] },
+    "price":               { "type": ["number", "null"], "minimum": 0 },
+    "currency":            { "type": ["string", "null"] },
+    "quantity":            { "type": ["integer", "null"], "minimum": 1 },
+    "cart_value":          { "type": ["number", "null"], "minimum": 0 }
+  },
+  "additionalProperties": false
+}

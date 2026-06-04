@@ -20,11 +20,13 @@ The project deliberately introduces messy production-like data problems — dupl
 
 ## Architecture
 
+The pipeline follows a Medallion architecture: Raw (Bronze) → Curated (Silver) → Analytics (Gold).
+
 ```mermaid
 flowchart LR
-    A["Synthetic Event Generator"] --> B["Raw Layer\nduplicates · late data · schema evolution · bad records"]
-    B --> C["Curated Layer\nflatten · validate · deduplicate"]
-    C --> D["Analytics Layer\nabandoned carts — session-product grain"]
+    A["Synthetic Event Generator"] --> B["Raw · Bronze\nduplicates · late data · schema evolution · bad records"]
+    B --> C["Curated · Silver\nflatten · validate · deduplicate"]
+    C --> D["Analytics · Gold\nabandoned carts — session-product grain"]
 
     B -. "AWS equivalent" .-> E["Amazon S3\nevent_date / hour partitions"]
     C -. "AWS equivalent" .-> F["AWS Glue + S3\nevent_date partitions"]
@@ -91,6 +93,7 @@ Abandoned carts analytics dataset at session-product grain, partitioned by event
 | S3 raw bucket | `raw/events/event_date=YYYY-MM-DD/hour=HH/` |
 | S3 curated bucket | `curated/events/event_date=YYYY-MM-DD/` |
 | S3 analytics bucket | `analytics/abandoned_carts/event_date=YYYY-MM-DD/` |
+| S3 quarantine bucket | `quarantine/rejected_events/event_date=YYYY-MM-DD/` |
 | Glue job | `raw-to-curated` — flattens, validates, deduplicates |
 | Glue job | `curated-to-abandoned-carts` — builds analytics output |
 | Glue Crawlers | register curated and analytics partitions in the Catalog |
@@ -102,11 +105,37 @@ Abandoned carts analytics dataset at session-product grain, partitioned by event
 - Event-date partition reprocessing: affected `event_date` partitions are identified from incoming records and dynamically overwritten
 - Two parallel implementations of every transformation — plain Python for local dev and Glue-style PySpark for AWS — so the pipeline is testable without AWS credentials
 - Glue jobs read S3 paths from environment variables; no hardcoded bucket names anywhere in the codebase
+- S3 data is partitioned by `event_date`; Athena uses partition pruning to scan only the requested date range, reducing both query cost and latency
 - Structured quality summary logged to CloudWatch at the end of every Glue run: rejection breakdown by category, dedup rate, conversion split
 - SLA-style validation: missing business-critical fields (`event_id`, `event_timestamp`) and invalid cart/purchase prices are tracked as named rejection categories, not silently dropped
 - Airflow DAG uses `GlueJobOperator` and `GlueCrawlerOperator` matching the MWAA API — local Docker demo is configuration-only migration away from production
 - Terraform provisions all AWS resources; uploading Glue scripts to S3 is a separate deployment step to keep infra and code lifecycle independent
-- IAM role uses `AWSGlueServiceRole` plus a scoped inline policy limited to the three project S3 buckets
+- IAM role uses `AWSGlueServiceRole` plus a scoped inline policy limited to the four project S3 buckets (raw, curated, analytics, quarantine)
+
+## Data Quality Rules
+
+Rules applied at the Curated (Silver) layer. Rejected records are written to the quarantine bucket for investigation rather than silently dropped.
+
+| Rule | Applies to | Action |
+|---|---|---|
+| `event_id` is null | All events | Reject → quarantine |
+| `event_timestamp` is null | All events | Reject → quarantine |
+| `price` is null | `add_to_cart`, `purchase` | Reject → quarantine |
+| Duplicate `event_id` | All events | Keep latest by `ingestion_timestamp` |
+
+Future improvement: [AWS Glue Data Quality](https://docs.aws.amazon.com/glue/latest/dg/glue-data-quality.html) or Great Expectations for declarative rule management.
+
+## Why AWS Glue
+
+| Requirement | Why Glue fits |
+|---|---|
+| Serverless Spark | No cluster management — workers spin up per job run |
+| Native S3 integration | Reads/writes S3 partitions with dynamic partition overwrite |
+| Glue Data Catalog | Auto-registers partitions so Athena can query immediately after each run |
+| Pay-per-use | Billed per DPU-second; cost-effective for daily batch jobs at this scale |
+| MWAA-ready | `GlueJobOperator` in Airflow targets the same API as production MWAA |
+
+EMR would add always-on cluster cost and operational overhead for a daily batch job at this scale. Lambda has a 15-minute timeout and no Spark runtime — not suitable for partition-level rewrites across multiple days.
 
 ## Data Engineering Scenarios Covered
 
@@ -194,13 +223,13 @@ Groups events by `user_id`, `session_id`, `product_id`. Matches `add_to_cart` ag
 <details>
 <summary><strong>Design Decisions and Trade-offs</strong></summary>
 
-**Incremental processing:** Glue jobs use dynamic partition overwrite, which rewrites only affected `event_date` partitions. Full incremental checkpointing (tracking which raw files have been processed) is not implemented. In production this would be handled by a state store (e.g. DynamoDB) or Glue job bookmarks.
+**Incremental processing:** Glue jobs use dynamic partition overwrite, which rewrites only affected `event_date` partitions. This handles late-arriving data correctly — reprocessing a partition is idempotent. Full file-level checkpointing (tracking which raw files have already been processed to avoid re-reading them) is not implemented. In production, two approaches are common: AWS Glue Job Bookmarks, which track S3 file positions automatically between job runs, or a DynamoDB state table storing the last processed file key per partition. Both prevent redundant processing as the raw zone grows.
 
 **Airflow hosting:** The DAG runs locally via Docker Compose for demo purposes. In production, MWAA or a self-managed Airflow cluster would hold live AWS credentials and run on a schedule. The DAG code targets the same `GlueJobOperator` and `GlueCrawlerOperator` that MWAA uses, so migration is configuration-only.
 
 **Terraform scope:** Provisions all AWS resources (S3 buckets, Glue jobs, crawlers, Glue Catalog database, IAM role, Athena workgroup). Uploading Glue scripts to S3 is a separate deployment step before `terraform apply`.
 
-**IAM permissions:** Glue IAM role uses `AWSGlueServiceRole` plus a scoped inline policy limited to the three project S3 buckets and the scripts bucket.
+**IAM permissions:** Glue IAM role uses `AWSGlueServiceRole` plus a scoped inline policy limited to the four project S3 buckets (raw, curated, analytics, quarantine) and the scripts bucket.
 
 </details>
 
@@ -239,6 +268,7 @@ python src/glue_jobs/glue_build_abandoned_carts.py
 export S3_RAW_BUCKET=...
 export S3_CURATED_BUCKET=...
 export S3_ANALYTICS_BUCKET=...
+export S3_QUARANTINE_BUCKET=...
 export RAW_PREFIX=raw/events
 export CURATED_PREFIX=curated/events
 export ANALYTICS_PREFIX=analytics/abandoned_carts

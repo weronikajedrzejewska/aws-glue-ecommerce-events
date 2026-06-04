@@ -1,6 +1,8 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
+import os
+
 from src.utils.aws_paths import get_glue_paths
 
 
@@ -57,6 +59,14 @@ def main() -> None:
         valid_df.withColumn("rn", F.row_number().over(w)).filter(F.col("rn") == 1).drop("rn")
     )
 
+    rejected_df = flat_df.filter(
+        F.col("event_id").isNull()
+        | F.col("event_timestamp").isNull()
+        | (F.col("event_type").isin("add_to_cart", "purchase") & F.col("price").isNull())
+    ).withColumn("rejection_reason", F.when(
+        F.col("event_id").isNull() | F.col("event_timestamp").isNull(), "missing_required_fields"
+    ).otherwise("invalid_price"))
+
     invalid_missing_ids = flat_df.filter(
         F.col("event_id").isNull() | F.col("event_timestamp").isNull()
     ).count()
@@ -71,6 +81,12 @@ def main() -> None:
 
     # Dynamic partition overwrite rewrites only affected event_date partitions.
     (curated_df.write.mode("overwrite").partitionBy("event_date").json(paths.curated_path))
+
+    # Rejected rows are written to quarantine for investigation rather than silently dropped.
+    quarantine_bucket = os.environ.get("S3_QUARANTINE_BUCKET")
+    if quarantine_bucket and rejected_df.count() > 0:
+        quarantine_path = f"s3://{quarantine_bucket}/quarantine/rejected_events"
+        (rejected_df.write.mode("append").partitionBy("event_date").json(quarantine_path))
 
     rejected_count = raw_count - valid_count
     dedup_removed = valid_count - curated_count

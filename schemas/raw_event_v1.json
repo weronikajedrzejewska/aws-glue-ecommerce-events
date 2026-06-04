@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RawEventV1",
+  "description": "Raw e-commerce event schema — v1 (no device_type field)",
+  "type": "object",
+  "required": ["event_id", "event_type", "event_timestamp", "ingestion_timestamp", "event_version", "user_id", "session_id", "event_source", "payload"],
+  "properties": {
+    "event_id":            { "type": "string", "format": "uuid" },
+    "event_type":          { "type": "string", "enum": ["page_view", "add_to_cart", "purchase"] },
+    "event_timestamp":     { "type": "string", "format": "date-time" },
+    "ingestion_timestamp": { "type": "string", "format": "date-time" },
+    "event_version":       { "type": "string", "const": "v1" },
+    "user_id":             { "type": "string" },
+    "session_id":          { "type": "string" },
+    "country":             { "type": ["string", "null"] },
+    "event_source":        { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["product_id", "category", "currency", "quantity"],
+      "properties": {
+        "product_id": { "type": "string" },
+        "category":   { "type": "string", "enum": ["books", "electronics", "home", "beauty", "toys"] },
+        "price":      { "type": ["number", "null"], "minimum": 0 },
+        "currency":   { "type": "string" },
+        "quantity":   { "type": "integer", "minimum": 1 },
+        "cart_value": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

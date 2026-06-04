@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalyticsAbandonedCarts",
+  "description": "Analytics output schema — one record per user/session/product grain. abandoned_cart_flag=1 means no purchase was made after add_to_cart.",
+  "type": "object",
+  "required": ["event_date", "user_id", "session_id", "product_id", "added_to_cart_ts", "abandoned_cart_flag", "has_multiple_adds"],
+  "properties": {
+    "event_date":               { "type": "string", "format": "date" },
+    "user_id":                  { "type": "string" },
+    "session_id":               { "type": "string" },
+    "product_id":               { "type": "string" },
+    "added_to_cart_ts":         { "type": "string", "format": "date-time" },
+    "purchased_ts":             { "type": ["string", "null"], "format": "date-time" },
+    "cart_value":               { "type": ["number", "null"], "minimum": 0 },
+    "abandoned_cart_flag":      { "type": "integer", "enum": [0, 1] },
+    "time_to_purchase_minutes": { "type": ["number", "null"], "minimum": 0 },
+    "has_multiple_adds":        { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

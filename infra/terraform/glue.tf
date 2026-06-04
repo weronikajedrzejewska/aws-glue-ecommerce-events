@@ -11,6 +11,7 @@ resource "aws_glue_job" "raw_to_curated" {
   default_arguments = {
     "--S3_RAW_BUCKET"                = aws_s3_bucket.raw.bucket
     "--S3_CURATED_BUCKET"            = aws_s3_bucket.curated.bucket
+    "--S3_QUARANTINE_BUCKET"         = aws_s3_bucket.quarantine.bucket
     "--job-language"                 = "python"
     "--enable-metrics"               = "true"
     "--enable-continuous-cloudwatch-log" = "true"
